@@ -67,11 +67,21 @@ public struct PromptPanelView: View {
         ZStack {
             panelBackground(theme: theme)
                 .overlay {
-                    if settingsRepository.settings.themeMode == .solitudeBlue && !isWorkspaceEmbeddedStyle {
-                        CompactSolitudeBlueBackground(theme: theme)
+                    if settingsRepository.settings.themeMode == .breezyDay && !isWorkspaceEmbeddedStyle {
+                        BreezyDayBackground(
+                            theme: theme,
+                            isCompact: true,
+                            isPaused: !panelCoordinator.isPresented
+                        )
+                            .transition(.opacity.animation(.easeInOut(duration: 0.24)))
+                    } else if settingsRepository.settings.themeMode == .solitudeBlue && !isWorkspaceEmbeddedStyle {
+                        CompactSolitudeBlueBackground(
+                            theme: theme,
+                            isActive: panelCoordinator.isPresented
+                        )
                             .transition(.opacity.animation(.easeInOut(duration: 0.2)))
                     } else if theme.isDark && !isWorkspaceEmbeddedStyle {
-                        GalaxyBackground(theme: theme)
+                        GalaxyBackground(theme: theme, isActive: panelCoordinator.isPresented)
                             .transition(.opacity.animation(.easeInOut(duration: 0.2)))
                     }
                 }
@@ -462,6 +472,8 @@ public struct PromptPanelView: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(theme.surface.opacity(theme.isDark ? 0.42 : 0.74))
             }
+        } else if isWorkspaceEmbeddedStyle && theme.mode == .breezyDay {
+            Color.clear
         } else {
             theme.background
         }
@@ -545,7 +557,7 @@ public struct PromptPanelView: View {
                 .fill(theme.separator)
                 .frame(height: 1)
         }
-        .background(theme.background)
+        .background(theme.mode == .breezyDay ? theme.background.opacity(0.62) : theme.background)
     }
 
     private func beginCreatingTopLevelCategory() {
@@ -1157,7 +1169,12 @@ private struct PromptListView: View {
     @EnvironmentObject private var panelCoordinator: PanelCoordinator
 
     private var prompts: [PromptItem] {
-        filter(promptRepository.prompts)
+        guard let mainCategoryID else { return [] }
+        let scopedSecondaryCategoryID = isSecondaryNavigationEnabled ? secondaryCategoryID : nil
+        return promptRepository.prompts(
+            mainCategoryID: mainCategoryID,
+            secondaryCategoryID: scopedSecondaryCategoryID
+        )
     }
 
     private var promptIDs: [UUID] {
@@ -1170,7 +1187,7 @@ private struct PromptListView: View {
                 listBody
             }
             .id(listIdentity)
-            .background(theme.background)
+            .background(theme.mode == .breezyDay ? theme.background.opacity(0.58) : theme.background)
             .contentShape(Rectangle())
             .contextMenu {
                 Button("新建提示词") {
@@ -1208,10 +1225,10 @@ private struct PromptListView: View {
 
     private var listBody: some View {
         LazyVStack(spacing: 0) {
-            ForEach(Array(prompts.enumerated()), id: \.element.id) { index, prompt in
+            ForEach(prompts, id: \.id) { prompt in
                 promptRow(for: prompt)
 
-                if index < prompts.count - 1 {
+                if prompt.id != prompts.last?.id {
                     Rectangle()
                         .fill(theme.separator)
                         .frame(height: 1)
@@ -1228,15 +1245,6 @@ private struct PromptListView: View {
         }
         .padding(.top, 8)
         .padding(.bottom, 16)
-    }
-
-    private func filter(_ prompts: [PromptItem]) -> [PromptItem] {
-        guard let mainCategoryID else { return [] }
-        return prompts.filter { prompt in
-            let mainCategoryMatch = prompt.category?.id == mainCategoryID
-            let secondaryCategoryMatch = !isSecondaryNavigationEnabled || secondaryCategoryID == nil || prompt.secondaryCategory?.id == secondaryCategoryID
-            return mainCategoryMatch && secondaryCategoryMatch
-        }
     }
 
     private func metaTags(for prompt: PromptItem) -> [String] {
@@ -1730,6 +1738,8 @@ struct SettingsPageView: View {
             "柔粉"
         case .solitudeBlue:
             "寒蓝"
+        case .breezyDay:
+            "晴风"
         }
     }
 
@@ -1756,6 +1766,8 @@ struct SettingsPageView: View {
             "柔粉"
         case .solitudeBlue:
             "寒蓝"
+        case .breezyDay:
+            "晴风"
         }
     }
 
@@ -1771,6 +1783,8 @@ struct SettingsPageView: View {
         case .softRose:
             nextTheme = .solitudeBlue
         case .solitudeBlue:
+            nextTheme = .breezyDay
+        case .breezyDay:
             nextTheme = .light
         }
         settingsRepository.updateTheme(nextTheme)
@@ -1803,6 +1817,8 @@ struct SettingsPageView: View {
         case .softRose:
             nextMode = .solitudeBlue
         case .solitudeBlue:
+            nextMode = .breezyDay
+        case .breezyDay:
             nextMode = .followPrimary
         }
         settingsRepository.updateWorkspaceTheme(nextMode)
@@ -2537,7 +2553,7 @@ private struct CompanionImage: View {
         theme.isDark ? theme.textSecondary : theme.textTertiary.opacity(0.9)
     }
 
-    private var companionImage: NSImage? {
+    private static let cachedCompanionImage: NSImage? = {
         guard let url = Bundle.module.promptBarResourceURL(
             forResource: "companion-template",
             withExtension: "png",
@@ -2546,6 +2562,10 @@ private struct CompanionImage: View {
             return nil
         }
         return NSImage(contentsOf: url)
+    }()
+
+    private var companionImage: NSImage? {
+        Self.cachedCompanionImage
     }
 }
 
@@ -2578,8 +2598,10 @@ private struct BearInkBackdrop: View {
 
 struct GalaxyBackground: View {
     let theme: PromptBarTheme
+    let isActive: Bool
 
     @State private var glowing = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let stars: [GalaxyStar] = [
         GalaxyStar(x: 0.14, y: 0.19, size: 1.3, twinkles: false, delay: 0.0),
@@ -2640,12 +2662,22 @@ struct GalaxyBackground: View {
                 }
             }
             .onAppear {
-                withAnimation(PromptBarMotion.galaxy.repeatForever(autoreverses: true)) {
-                    glowing = true
-                }
+                updateAnimation()
             }
+            .onChange(of: isActive) { _, _ in updateAnimation() }
+            .onChange(of: reduceMotion) { _, _ in updateAnimation() }
         }
         .allowsHitTesting(false)
+    }
+
+    private func updateAnimation() {
+        guard isActive, !reduceMotion else {
+            withAnimation(nil) { glowing = false }
+            return
+        }
+        withAnimation(PromptBarMotion.galaxy.repeatForever(autoreverses: true)) {
+            glowing = true
+        }
     }
 
     private func starOpacity(for star: GalaxyStar) -> Double {
@@ -2665,8 +2697,10 @@ private struct GalaxyStar {
 
 private struct CompactSolitudeBlueBackground: View {
     let theme: PromptBarTheme
+    let isActive: Bool
 
     @State private var drift = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let stars: [GalaxyStar] = [
         GalaxyStar(x: 0.16, y: 0.16, size: 1.3, twinkles: true, delay: 0.1),
@@ -2717,12 +2751,116 @@ private struct CompactSolitudeBlueBackground: View {
                 }
             }
             .onAppear {
-                withAnimation(PromptBarMotion.galaxy.repeatForever(autoreverses: true)) {
-                    drift = true
+                updateAnimation()
+            }
+            .onChange(of: isActive) { _, _ in updateAnimation() }
+            .onChange(of: reduceMotion) { _, _ in updateAnimation() }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func updateAnimation() {
+        guard isActive, !reduceMotion else {
+            withAnimation(nil) { drift = false }
+            return
+        }
+        withAnimation(PromptBarMotion.galaxy.repeatForever(autoreverses: true)) {
+            drift = true
+        }
+    }
+}
+
+struct BreezyDayBackground: View {
+    let theme: PromptBarTheme
+    let isCompact: Bool
+    let isPaused: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(
+            .animation(
+                minimumInterval: 1.0 / (isCompact ? 12.0 : 15.0),
+                paused: reduceMotion || isPaused
+            )
+        ) { context in
+            let time = reduceMotion || isPaused ? 0 : context.date.timeIntervalSinceReferenceDate
+
+            GeometryReader { geometry in
+                let size = geometry.size
+                let slowPhase = CGFloat(time * 0.16)
+                let drift = CGFloat(sin(time * 0.11))
+
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.820, green: 0.914, blue: 0.941),
+                            Color(red: 0.898, green: 0.957, blue: 0.918),
+                            Color(red: 0.996, green: 0.961, blue: 0.875)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+
+                    Circle()
+                        .fill(theme.galaxyGlow.opacity(isCompact ? 0.34 : 0.46))
+                        .frame(
+                            width: min(size.width, size.height) * (isCompact ? 0.48 : 0.42),
+                            height: min(size.width, size.height) * (isCompact ? 0.48 : 0.42)
+                        )
+                        .blur(radius: isCompact ? 30 : 52)
+                        .offset(x: size.width * 0.32, y: -size.height * 0.30)
+
+                    BreezeRibbon(phase: slowPhase, verticalPosition: 0.44, thickness: isCompact ? 0.13 : 0.16)
+                        .fill(theme.galaxyPrimary.opacity(isCompact ? 0.26 : 0.30))
+                        .blur(radius: isCompact ? 9 : 18)
+                        .offset(x: drift * (isCompact ? 6 : 14))
+
+                    BreezeRibbon(phase: slowPhase + 2.1, verticalPosition: 0.66, thickness: isCompact ? 0.09 : 0.12)
+                        .fill(theme.galaxySecondary.opacity(isCompact ? 0.20 : 0.24))
+                        .blur(radius: isCompact ? 12 : 22)
+                        .offset(x: -drift * (isCompact ? 5 : 12))
+
+                    LinearGradient(
+                        colors: [
+                            .clear,
+                            Color.white.opacity(isCompact ? 0.12 : 0.18)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
                 }
             }
         }
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct BreezeRibbon: Shape {
+    let phase: CGFloat
+    let verticalPosition: CGFloat
+    let thickness: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let wave = CGFloat(sin(Double(phase))) * rect.height * 0.035
+        let y = rect.height * verticalPosition + wave
+        let ribbonHeight = rect.height * thickness
+        var path = Path()
+
+        path.move(to: CGPoint(x: -rect.width * 0.12, y: y))
+        path.addCurve(
+            to: CGPoint(x: rect.width * 1.12, y: y + ribbonHeight * 0.16),
+            control1: CGPoint(x: rect.width * 0.22, y: y - ribbonHeight * 0.88),
+            control2: CGPoint(x: rect.width * 0.72, y: y + ribbonHeight * 0.92)
+        )
+        path.addCurve(
+            to: CGPoint(x: -rect.width * 0.12, y: y + ribbonHeight),
+            control1: CGPoint(x: rect.width * 0.70, y: y + ribbonHeight * 1.08),
+            control2: CGPoint(x: rect.width * 0.18, y: y + ribbonHeight * 0.14)
+        )
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -3054,11 +3192,9 @@ private struct SearchOverlay: View {
     @FocusState private var isSearchFocused: Bool
     let theme: PromptBarTheme
 
-    private var results: [PromptItem] {
-        promptRepository.searchPrompts(query: panelCoordinator.searchQuery)
-    }
-
     var body: some View {
+        let results = promptRepository.searchPrompts(query: panelCoordinator.searchQuery)
+
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("搜索提示词")
@@ -3099,7 +3235,7 @@ private struct SearchOverlay: View {
                 } else {
                     ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(results.enumerated()), id: \.element.id) { index, prompt in
+                            ForEach(results, id: \.id) { prompt in
                                 PromptTextRow(
                                     theme: theme,
                                     prompt: prompt,
@@ -3120,7 +3256,7 @@ private struct SearchOverlay: View {
                                     }
                                 }
 
-                                if index < results.count - 1 {
+                                if prompt.id != results.last?.id {
                                     Rectangle()
                                         .fill(theme.separator)
                                         .frame(height: 1)

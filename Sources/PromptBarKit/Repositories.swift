@@ -3,6 +3,11 @@ import SwiftData
 
 @MainActor
 public final class PromptRepository: ObservableObject {
+    private struct PromptScope: Hashable {
+        let mainCategoryID: UUID?
+        let secondaryCategoryID: UUID?
+    }
+
     private enum ArchiveNames {
         static let main = "回收站"
         static let secondary = "回收分组"
@@ -14,6 +19,9 @@ public final class PromptRepository: ObservableObject {
     @Published public private(set) var tags: [PromptTag] = []
 
     private let modelContext: ModelContext
+    private var promptByID: [UUID: PromptItem] = [:]
+    private var promptsByScope: [PromptScope: [PromptItem]] = [:]
+    private var searchDocumentByPromptID: [UUID: NormalizedSearchDocument] = [:]
 
     public init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -23,9 +31,7 @@ public final class PromptRepository: ObservableObject {
         try seedIfNeeded(legacySidebarCategories: legacySidebarCategories)
         try reload()
         try migrateLegacySidebarCategories(legacySidebarCategories)
-        try reload()
         try migrateLegacyTagsToThreeLevelModel()
-        try reload()
     }
 
     public func reload() throws {
@@ -49,6 +55,7 @@ public final class PromptRepository: ObservableObject {
             }
             return lhs.updatedAt > rhs.updatedAt
         }
+        rebuildPromptIndexes()
     }
 
     public func visibleCategories() -> [PromptCategory] {
@@ -60,11 +67,13 @@ public final class PromptRepository: ObservableObject {
     }
 
     public func prompts(mainCategoryID: UUID?, secondaryCategoryID: UUID?) -> [PromptItem] {
-        prompts.filter { prompt in
-            let mainCategoryMatch = mainCategoryID == nil || prompt.category?.id == mainCategoryID
-            let secondaryCategoryMatch = secondaryCategoryID == nil || prompt.secondaryCategory?.id == secondaryCategoryID
-            return mainCategoryMatch && secondaryCategoryMatch
-        }
+        promptsByScope[
+            PromptScope(mainCategoryID: mainCategoryID, secondaryCategoryID: secondaryCategoryID)
+        ] ?? []
+    }
+
+    public func prompts(ids: [UUID]) -> [PromptItem] {
+        ids.compactMap { promptByID[$0] }
     }
 
     public func visibleSecondaryCategories(in mainCategoryID: UUID?) -> [PromptSecondaryCategory] {
@@ -77,12 +86,10 @@ public final class PromptRepository: ObservableObject {
     public func searchPrompts(query: String) -> [PromptItem] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        let normalizedQuery = trimmed.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let normalizedQuery = NormalizedSearchDocument.normalize(trimmed)
 
         return prompts.filter { prompt in
-            let normalizedTitle = prompt.title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            let normalizedContent = prompt.content.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            return normalizedTitle.contains(normalizedQuery) || normalizedContent.contains(normalizedQuery)
+            searchDocumentByPromptID[prompt.id]?.contains(normalizedQuery) == true
         }
     }
 
@@ -360,6 +367,33 @@ public final class PromptRepository: ObservableObject {
         try reload()
     }
 
+    private func rebuildPromptIndexes() {
+        promptByID.removeAll(keepingCapacity: true)
+        promptsByScope.removeAll(keepingCapacity: true)
+        searchDocumentByPromptID.removeAll(keepingCapacity: true)
+
+        for prompt in prompts {
+            promptByID[prompt.id] = prompt
+            searchDocumentByPromptID[prompt.id] = NormalizedSearchDocument(
+                title: prompt.title,
+                content: prompt.content
+            )
+
+            let mainCategoryID = prompt.category?.id
+            let secondaryCategoryID = prompt.secondaryCategory?.id
+            let scopes = [
+                PromptScope(mainCategoryID: nil, secondaryCategoryID: nil),
+                PromptScope(mainCategoryID: mainCategoryID, secondaryCategoryID: nil),
+                PromptScope(mainCategoryID: nil, secondaryCategoryID: secondaryCategoryID),
+                PromptScope(mainCategoryID: mainCategoryID, secondaryCategoryID: secondaryCategoryID)
+            ]
+
+            for scope in Set(scopes) {
+                promptsByScope[scope, default: []].append(prompt)
+            }
+        }
+    }
+
     private func normalize(_ value: String?) -> String {
         value?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -383,8 +417,12 @@ public final class PromptRepository: ObservableObject {
     }
 
     private func seedIfNeeded(legacySidebarCategories: [SidebarCategoryConfiguration]) throws {
-        let hasPrompts = try !modelContext.fetch(FetchDescriptor<PromptItem>()).isEmpty
-        let hasCategories = try !modelContext.fetch(FetchDescriptor<PromptCategory>()).isEmpty
+        var promptDescriptor = FetchDescriptor<PromptItem>()
+        promptDescriptor.fetchLimit = 1
+        var categoryDescriptor = FetchDescriptor<PromptCategory>()
+        categoryDescriptor.fetchLimit = 1
+        let hasPrompts = try !modelContext.fetch(promptDescriptor).isEmpty
+        let hasCategories = try !modelContext.fetch(categoryDescriptor).isEmpty
         if hasPrompts || hasCategories {
             return
         }
@@ -649,8 +687,11 @@ public final class SettingsRepository: ObservableObject {
     }
 
     private func persist() {
-        settings = settings.normalized()
-        guard let data = try? JSONEncoder().encode(settings) else { return }
+        let normalized = settings.normalized()
+        if normalized != settings {
+            settings = normalized
+        }
+        guard let data = try? JSONEncoder().encode(normalized) else { return }
         defaults.set(data, forKey: key)
     }
 }

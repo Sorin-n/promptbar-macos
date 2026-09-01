@@ -150,7 +150,7 @@ public struct PromptWorkspaceView: View {
                         .environmentObject(workspaceCoordinator)
                         .padding(18)
                         .frame(width: metrics.rightWidth)
-                        .background(theme.background)
+                        .background(theme.mode == .breezyDay ? Color.clear : theme.background)
                         .transition(.opacity.animation(.easeInOut(duration: 0.18)))
                 .simultaneousGesture(
                     TapGesture().onEnded {
@@ -281,6 +281,8 @@ public struct PromptWorkspaceView: View {
     private func workspacePaneBackground(theme: PromptBarTheme, tint: Color) -> some View {
         if settingsRepository.settings.workspaceGlassEnabled {
             WorkspaceGlassPaneFill(theme: theme, tint: tint)
+        } else if theme.mode == .breezyDay {
+            tint.opacity(0.70)
         } else {
             tint
         }
@@ -412,15 +414,12 @@ private struct PromptLibraryWorkspaceView: View {
         promptLibraryRepository.visibleSources()
     }
 
-    private var recycleSource: PromptLibrarySource? {
-        visibleSources.first(where: promptLibraryRepository.isRecycleSource)
-    }
-
-    private var importedSources: [PromptLibrarySource] {
-        visibleSources.filter { !promptLibraryRepository.isRecycleSource($0) }
-    }
-
     var body: some View {
+        let entries = visibleEntries
+        let sources = visibleSources
+        let recycleSource = sources.first(where: promptLibraryRepository.isRecycleSource)
+        let importedSources = sources.filter { !promptLibraryRepository.isRecycleSource($0) }
+
         VStack(spacing: 0) {
             HStack(spacing: 14) {
                 HStack(spacing: 0) {
@@ -496,7 +495,7 @@ private struct PromptLibraryWorkspaceView: View {
                     .onTapGesture {
                         clearSearchFocus()
                     }
-            } else if visibleEntries.isEmpty {
+            } else if entries.isEmpty {
                 WorkspaceLibrarySearchEmptyState(theme: theme)
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -505,7 +504,7 @@ private struct PromptLibraryWorkspaceView: View {
             } else {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 14) {
-                        ForEach(visibleEntries, id: \.id) { entry in
+                        ForEach(entries, id: \.id) { entry in
                             WorkspaceLibraryEntryCard(
                                 theme: theme,
                                 entry: entry,
@@ -918,19 +917,33 @@ private struct WorkspaceBackdropView: View {
     let theme: PromptBarTheme
     let resolvedThemeMode: ThemeMode
 
+    @EnvironmentObject private var workspaceCoordinator: WorkspaceCoordinator
+
     var body: some View {
         ZStack {
             theme.background
 
-            if resolvedThemeMode == .solitudeBlue {
-                SolitudeBlueSceneBackground(theme: theme)
+            if resolvedThemeMode == .breezyDay {
+                BreezyDayBackground(
+                    theme: theme,
+                    isCompact: false,
+                    isPaused: !workspaceCoordinator.isPresented
+                )
+                    .transition(.opacity.animation(.easeInOut(duration: 0.28)))
+            } else if resolvedThemeMode == .solitudeBlue {
+                SolitudeBlueSceneBackground(
+                    theme: theme,
+                    isPaused: !workspaceCoordinator.isPresented
+                )
                     .transition(.opacity.animation(.easeInOut(duration: 0.24)))
             } else if theme.isDark {
-                GalaxyBackground(theme: theme)
+                GalaxyBackground(theme: theme, isActive: workspaceCoordinator.isPresented)
                     .transition(.opacity.animation(.easeInOut(duration: 0.2)))
             }
 
-            WorkspaceAtmosphereOverlay(theme: theme, isBlueMode: resolvedThemeMode == .solitudeBlue)
+            if resolvedThemeMode != .breezyDay {
+                WorkspaceAtmosphereOverlay(theme: theme, isBlueMode: resolvedThemeMode == .solitudeBlue)
+            }
         }
         .ignoresSafeArea()
         .clipped()
@@ -969,6 +982,9 @@ private struct WorkspaceAtmosphereOverlay: View {
 
 private struct SolitudeBlueSceneBackground: View {
     let theme: PromptBarTheme
+    let isPaused: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let stars: [WorkspaceStar] = [
         .init(x: 0.12, y: 0.14, size: 2.2, twinkleSpeed: 0.17),
@@ -982,8 +998,10 @@ private struct SolitudeBlueSceneBackground: View {
     ]
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
+        TimelineView(
+            .animation(minimumInterval: 1.0 / 15.0, paused: reduceMotion || isPaused)
+        ) { context in
+            let t = reduceMotion || isPaused ? 0 : context.date.timeIntervalSinceReferenceDate
 
             GeometryReader { geometry in
                 let size = geometry.size

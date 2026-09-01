@@ -35,6 +35,12 @@ public final class PromptLibraryRepository: ObservableObject {
     @Published public private(set) var entries: [PromptLibraryEntry] = []
 
     private let modelContext: ModelContext
+    private var visibleSourcesCache: [PromptLibrarySource] = []
+    private var orderedEntriesCache: [PromptLibraryEntry] = []
+    private var sourceByID: [UUID: PromptLibrarySource] = [:]
+    private var entryByID: [UUID: PromptLibraryEntry] = [:]
+    private var searchDocumentByEntryID: [UUID: NormalizedSearchDocument] = [:]
+    private var recycleSourceCache: PromptLibrarySource?
 
     public init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -58,20 +64,11 @@ public final class PromptLibraryRepository: ObservableObject {
                 ]
             )
         )
+        rebuildCaches()
     }
 
     public func visibleSources() -> [PromptLibrarySource] {
-        let recycle = sources.first(where: isRecycleSource)
-        let imported = sources
-            .filter { !isRecycleSource($0) }
-            .sorted { lhs, rhs in
-                if lhs.importedAt != rhs.importedAt {
-                    return lhs.importedAt > rhs.importedAt
-                }
-                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-            }
-
-        return ([recycle].compactMap { $0 }) + imported
+        visibleSourcesCache
     }
 
     public func hasImportedSources() -> Bool {
@@ -80,42 +77,27 @@ public final class PromptLibraryRepository: ObservableObject {
 
     public func filteredEntries(sourceID: UUID?, query: String) -> [PromptLibraryEntry] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedQuery = trimmedQuery.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let normalizedQuery = NormalizedSearchDocument.normalize(trimmedQuery)
 
-        return entries
-            .filter { entry in
+        return orderedEntriesCache.filter { entry in
                 let sourceMatch = sourceID == nil || entry.source?.id == sourceID
                 guard sourceMatch else { return false }
 
                 guard !normalizedQuery.isEmpty else { return true }
-
-                let normalizedTitle = entry.title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-                let normalizedContent = entry.content.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-                return normalizedTitle.contains(normalizedQuery) || normalizedContent.contains(normalizedQuery)
-            }
-            .sorted { lhs, rhs in
-                let lhsImportedAt = lhs.source?.importedAt ?? .distantPast
-                let rhsImportedAt = rhs.source?.importedAt ?? .distantPast
-                if lhsImportedAt != rhsImportedAt {
-                    return lhsImportedAt > rhsImportedAt
-                }
-                if lhs.sortOrder != rhs.sortOrder {
-                    return lhs.sortOrder < rhs.sortOrder
-                }
-                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+                return searchDocumentByEntryID[entry.id]?.contains(normalizedQuery) == true
             }
     }
 
     public func source(id: UUID) -> PromptLibrarySource? {
-        sources.first(where: { $0.id == id })
+        sourceByID[id]
     }
 
     public func recycleSource() -> PromptLibrarySource? {
-        sources.first(where: isRecycleSource)
+        recycleSourceCache
     }
 
     public func entry(id: UUID) -> PromptLibraryEntry? {
-        entries.first(where: { $0.id == id })
+        entryByID[id]
     }
 
     public func importFiles(at urls: [URL]) throws {
@@ -170,7 +152,7 @@ public final class PromptLibraryRepository: ObservableObject {
         guard !trimmedTitle.isEmpty, !trimmedContent.isEmpty else { return }
 
         let source = try ensureRecycleSourceExists()
-        let nextSortOrder = entries
+        let nextSortOrder = entries.lazy
             .filter { $0.source?.id == source.id }
             .map(\.sortOrder)
             .max() ?? -1
@@ -245,6 +227,43 @@ public final class PromptLibraryRepository: ObservableObject {
         try reload()
     }
 
+    private func rebuildCaches() {
+        sourceByID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
+        entryByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        recycleSourceCache = sources.first(where: isRecycleSource)
+
+        let importedSources = sources
+            .filter { !isRecycleSource($0) }
+            .sorted { lhs, rhs in
+                if lhs.importedAt != rhs.importedAt {
+                    return lhs.importedAt > rhs.importedAt
+                }
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+        visibleSourcesCache = ([recycleSourceCache].compactMap { $0 }) + importedSources
+
+        orderedEntriesCache = entries.sorted { lhs, rhs in
+            let lhsImportedAt = lhs.source?.importedAt ?? .distantPast
+            let rhsImportedAt = rhs.source?.importedAt ?? .distantPast
+            if lhsImportedAt != rhsImportedAt {
+                return lhsImportedAt > rhsImportedAt
+            }
+            if lhs.sortOrder != rhs.sortOrder {
+                return lhs.sortOrder < rhs.sortOrder
+            }
+            return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+        }
+
+        searchDocumentByEntryID = Dictionary(
+            uniqueKeysWithValues: entries.map { entry in
+                (
+                    entry.id,
+                    NormalizedSearchDocument(title: entry.title, content: entry.content)
+                )
+            }
+        )
+    }
+
     private func containsEntry(title: String, content: String, groupName: String?, sourceID: UUID?) -> Bool {
         let normalizedTitle = normalize(title)
         let normalizedContent = normalize(content)
@@ -302,7 +321,7 @@ public final class PromptLibraryRepository: ObservableObject {
     }
 
     private func parseEntries(from url: URL, format: PromptLibraryImportFormat) throws -> [ImportedPromptLibraryEntry] {
-        let data = try Data(contentsOf: url)
+        let data = try Data(contentsOf: url, options: .mappedIfSafe)
 
         switch format {
         case .json:
@@ -432,8 +451,7 @@ private enum CSVParser {
         var currentRow: [String] = []
         var currentField = ""
         var isInsideQuotes = false
-        let characters = Array(text)
-        var index = 0
+        var index = text.startIndex
 
         func flushField() {
             currentRow.append(currentField)
@@ -449,24 +467,24 @@ private enum CSVParser {
             currentRow = []
         }
 
-        while index < characters.count {
-            let character = characters[index]
+        while index < text.endIndex {
+            let character = text[index]
+            let nextIndex = text.index(after: index)
 
             if isInsideQuotes {
                 if character == "\"" {
-                    let nextIndex = index + 1
-                    if nextIndex < characters.count, characters[nextIndex] == "\"" {
+                    if nextIndex < text.endIndex, text[nextIndex] == "\"" {
                         currentField.append("\"")
-                        index += 2
+                        index = text.index(after: nextIndex)
                         continue
                     }
                     isInsideQuotes = false
-                    index += 1
+                    index = nextIndex
                     continue
                 }
 
                 currentField.append(character)
-                index += 1
+                index = nextIndex
                 continue
             }
 
@@ -483,7 +501,7 @@ private enum CSVParser {
                 currentField.append(character)
             }
 
-            index += 1
+            index = nextIndex
         }
 
         if !currentField.isEmpty || !currentRow.isEmpty {

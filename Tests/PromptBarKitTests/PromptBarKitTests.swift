@@ -48,6 +48,12 @@ final class PromptBarKitTests: XCTestCase {
         XCTAssertEqual(snapshot.normalized().themeMode, .solitudeBlue)
     }
 
+    func testSettingsNormalizationKeepsBreezyDayTheme() {
+        let snapshot = AppSettingsSnapshot(themeMode: .breezyDay)
+
+        XCTAssertEqual(snapshot.normalized().themeMode, .breezyDay)
+    }
+
     func testSettingsNormalizationKeepsWorkspaceDefaults() {
         let snapshot = AppSettingsSnapshot(themeMode: .light)
 
@@ -60,6 +66,11 @@ final class PromptBarKitTests: XCTestCase {
     func testSolitudeBlueThemeUsesDarkAppearance() {
         XCTAssertEqual(ThemeMode.solitudeBlue.preferredColorScheme, .dark)
         XCTAssertEqual(ThemeMode.solitudeBlue.nsAppearance?.name, .darkAqua)
+    }
+
+    func testBreezyDayThemeUsesLightAppearance() {
+        XCTAssertEqual(ThemeMode.breezyDay.preferredColorScheme, .light)
+        XCTAssertEqual(ThemeMode.breezyDay.nsAppearance?.name, .aqua)
     }
 
     func testWorkspaceThemeFollowPrimaryDefersColorSchemeButResolvesFallback() {
@@ -240,6 +251,26 @@ final class PromptBarKitTests: XCTestCase {
     }
 
     @MainActor
+    func testPromptLibraryRepositorySearchUsesNormalizedCachedText() throws {
+        let container = try makeLibraryContainer()
+        let repository = PromptLibraryRepository(modelContext: container.mainContext)
+        let url = try writeTemporaryFile(
+            named: "quoted.csv",
+            contents: """
+            title,content,group
+            "Café review","Compare A, B, and C",Research
+            Other,Unrelated,General
+            """
+        )
+
+        try repository.importFile(at: url)
+
+        let results = repository.filteredEntries(sourceID: nil, query: "CAFE")
+        XCTAssertEqual(results.map(\.title), ["Café review"])
+        XCTAssertEqual(results.first?.content, "Compare A, B, and C")
+    }
+
+    @MainActor
     func testPromptLibraryRepositoryEnsuresRecycleSourceExistsOnReload() throws {
         let container = try makeLibraryContainer()
         let repository = PromptLibraryRepository(modelContext: container.mainContext)
@@ -386,6 +417,43 @@ final class PromptBarKitTests: XCTestCase {
                 secondaryCategoryID: nil
             )
         )
+    }
+
+    @MainActor
+    func testPromptRepositoryIndexesScopesSearchAndRequestedOrder() throws {
+        let container = try makePromptContainer()
+        let repository = PromptRepository(modelContext: container.mainContext)
+        let firstCategory = PromptCategory(name: "Research", sortOrder: 0)
+        let secondCategory = PromptCategory(name: "Writing", sortOrder: 1)
+        let firstSecondary = PromptSecondaryCategory(name: "Review", sortOrder: 0, mainCategory: firstCategory)
+        let secondSecondary = PromptSecondaryCategory(name: "Draft", sortOrder: 0, mainCategory: secondCategory)
+        let firstPrompt = PromptItem(
+            title: "Café review",
+            content: "Compare evidence",
+            sortOrder: 0,
+            category: firstCategory,
+            secondaryCategory: firstSecondary
+        )
+        let secondPrompt = PromptItem(
+            title: "Release notes",
+            content: "Draft the update",
+            sortOrder: 1,
+            category: secondCategory,
+            secondaryCategory: secondSecondary
+        )
+
+        [firstCategory, secondCategory].forEach(container.mainContext.insert)
+        [firstSecondary, secondSecondary].forEach(container.mainContext.insert)
+        [firstPrompt, secondPrompt].forEach(container.mainContext.insert)
+        try container.mainContext.save()
+        try repository.reload()
+
+        XCTAssertEqual(
+            repository.prompts(mainCategoryID: firstCategory.id, secondaryCategoryID: nil).map(\.id),
+            [firstPrompt.id]
+        )
+        XCTAssertEqual(repository.searchPrompts(query: "CAFE").map(\.id), [firstPrompt.id])
+        XCTAssertEqual(repository.prompts(ids: [secondPrompt.id, firstPrompt.id]).map(\.id), [secondPrompt.id, firstPrompt.id])
     }
 
     private var testSuiteName: String {

@@ -7,6 +7,7 @@ public enum ThemeMode: String, Codable, CaseIterable, Identifiable {
     case dark
     case softRose
     case solitudeBlue
+    case breezyDay
 
     public var id: String { rawValue }
 }
@@ -17,6 +18,7 @@ public enum WorkspaceThemeMode: String, Codable, CaseIterable, Identifiable {
     case dark
     case softRose
     case solitudeBlue
+    case breezyDay
 
     public var id: String { rawValue }
 }

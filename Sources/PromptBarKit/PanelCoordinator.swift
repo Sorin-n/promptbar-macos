@@ -154,9 +154,7 @@ public final class PanelCoordinator: ObservableObject {
 
     public func visiblePromptList() -> [PromptItem] {
         if let visiblePromptIDs {
-            return visiblePromptIDs.compactMap { id in
-                promptRepository.prompts.first(where: { $0.id == id })
-            }
+            return promptRepository.prompts(ids: visiblePromptIDs)
         }
 
         return promptRepository.prompts(

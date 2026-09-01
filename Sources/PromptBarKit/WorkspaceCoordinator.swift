@@ -236,36 +236,6 @@ public final class WorkspaceCoordinator: ObservableObject {
         return NSRect(x: originX, y: originY, width: width, height: height)
     }
 
-    private func workspaceEmbeddedPreviewFrame(in workspaceFrame: NSRect) -> NSRect {
-        let metrics = makeWorkspaceLayoutMetrics(
-            totalWidth: workspaceFrame.width,
-            isSettingsPage: false,
-            isSidebarCollapsed: isSidebarCollapsed,
-            isRightSidebarCollapsed: false
-        )
-        let mainAreaMinX = workspaceFrame.minX + metrics.leftRailWidth + metrics.leftWidth + metrics.leftDividerWidth
-        let rightColumnMinX = mainAreaMinX + metrics.centerWidth + metrics.innerDividerWidth
-        return NSRect(
-            x: rightColumnMinX + 18,
-            y: workspaceFrame.minY + 18,
-            width: max(metrics.rightWidth - 36, 1),
-            height: max(workspaceFrame.height - 36, 1)
-        )
-    }
-
-    private func anchoredTopLeftFrame(from frame: NSRect, width: CGFloat, height: CGFloat) -> NSRect {
-        NSRect(x: frame.minX, y: frame.maxY - height, width: width, height: height)
-    }
-
-    private func interpolatedFrame(from start: NSRect, to end: NSRect, progress: CGFloat) -> NSRect {
-        NSRect(
-            x: start.minX + (end.minX - start.minX) * progress,
-            y: start.minY + (end.minY - start.minY) * progress,
-            width: start.width + (end.width - start.width) * progress,
-            height: start.height + (end.height - start.height) * progress
-        )
-    }
-
     private func centeredScaledFrame(from frame: NSRect, scale: CGFloat) -> NSRect {
         let width = frame.width * scale
         let height = frame.height * scale
@@ -277,51 +247,13 @@ public final class WorkspaceCoordinator: ObservableObject {
         )
     }
 
-    private func animateCrossfade(
-        from sourceWindow: NSWindow,
-        to destinationWindow: NSWindow,
-        frame: NSRect,
-        duration: TimeInterval,
-        timing: CAMediaTimingFunction,
-        completion: @escaping () -> Void
-    ) {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = duration
-            context.timingFunction = timing
-            sourceWindow.animator().setFrame(frame, display: true)
-            sourceWindow.animator().alphaValue = 0
-            destinationWindow.animator().setFrame(frame, display: true)
-            destinationWindow.animator().alphaValue = 1
-        } completionHandler: {
-            completion()
-        }
-    }
-
-    private func animate(
-        window: NSWindow,
-        to frame: NSRect,
-        alpha: CGFloat,
-        duration: TimeInterval,
-        timing: CAMediaTimingFunctionName,
-        completion: @escaping () -> Void
-    ) {
-        animate(
-            window: window,
-            to: frame,
-            alpha: alpha,
-            duration: duration,
-            timingFunction: CAMediaTimingFunction(name: timing),
-            completion: completion
-        )
-    }
-
     private func animate(
         window: NSWindow,
         to frame: NSRect,
         alpha: CGFloat,
         duration: TimeInterval,
         timingFunction: CAMediaTimingFunction,
-        completion: @escaping () -> Void
+        completion: @escaping @MainActor @Sendable () -> Void
     ) {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = duration
@@ -329,7 +261,9 @@ public final class WorkspaceCoordinator: ObservableObject {
             window.animator().setFrame(frame, display: true)
             window.animator().alphaValue = alpha
         } completionHandler: {
-            completion()
+            Task { @MainActor in
+                completion()
+            }
         }
     }
 

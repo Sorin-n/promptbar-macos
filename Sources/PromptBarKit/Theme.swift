@@ -3,6 +3,7 @@ import CoreText
 import SwiftUI
 
 public struct PromptBarTheme {
+    public let mode: ThemeMode
     public let isDark: Bool
     public let fontMode: FontMode
     public let headerUsesSurfaceBand: Bool
@@ -24,7 +25,9 @@ public struct PromptBarTheme {
     public let galaxyGlow: Color
 
     public static func resolve(for mode: ThemeMode, fontMode: FontMode, systemScheme: ColorScheme) -> PromptBarTheme {
-        FontAssetRegistry.shared.prepare()
+        if fontMode != .standard {
+            FontAssetRegistry.shared.prepare()
+        }
         let resolvedMode = switch mode {
         case .dark:
             ThemeMode.dark
@@ -34,12 +37,15 @@ public struct PromptBarTheme {
             ThemeMode.softRose
         case .solitudeBlue:
             ThemeMode.solitudeBlue
+        case .breezyDay:
+            ThemeMode.breezyDay
         case .system:
             ThemeMode.light
         }
 
         if resolvedMode == .dark {
             return PromptBarTheme(
+                mode: .dark,
                 isDark: true,
                 fontMode: fontMode,
                 headerUsesSurfaceBand: false,
@@ -66,8 +72,13 @@ public struct PromptBarTheme {
             return solitudeBlueTheme(fontMode: fontMode)
         }
 
+        if resolvedMode == .breezyDay {
+            return breezyDayTheme(fontMode: fontMode)
+        }
+
         if resolvedMode == .softRose {
             return PromptBarTheme(
+                mode: .softRose,
                 isDark: false,
                 fontMode: fontMode,
                 headerUsesSurfaceBand: true,
@@ -91,6 +102,7 @@ public struct PromptBarTheme {
         }
 
         return PromptBarTheme(
+            mode: .light,
             isDark: false,
             fontMode: fontMode,
             headerUsesSurfaceBand: false,
@@ -127,8 +139,8 @@ public struct PromptBarTheme {
     }
 
     private static func solitudeBlueTheme(fontMode: FontMode) -> PromptBarTheme {
-        FontAssetRegistry.shared.prepare()
         return PromptBarTheme(
+            mode: .solitudeBlue,
             isDark: true,
             fontMode: fontMode,
             headerUsesSurfaceBand: false,
@@ -148,6 +160,31 @@ public struct PromptBarTheme {
             galaxyPrimary: Color(red: 0.56, green: 0.72, blue: 0.97).opacity(0.32),
             galaxySecondary: Color(red: 0.31, green: 0.52, blue: 0.83).opacity(0.24),
             galaxyGlow: Color(red: 0.88, green: 0.94, blue: 1.0).opacity(0.24)
+        )
+    }
+
+    private static func breezyDayTheme(fontMode: FontMode) -> PromptBarTheme {
+        return PromptBarTheme(
+            mode: .breezyDay,
+            isDark: false,
+            fontMode: fontMode,
+            headerUsesSurfaceBand: false,
+            background: Color(red: 0.914, green: 0.957, blue: 0.941),
+            sidebarBackground: Color(red: 0.846, green: 0.925, blue: 0.897),
+            secondarySidebarBackground: Color(red: 0.878, green: 0.941, blue: 0.918),
+            surface: Color(red: 0.973, green: 0.992, blue: 0.980),
+            outline: Color(red: 0.365, green: 0.546, blue: 0.504).opacity(0.30),
+            separator: Color(red: 0.353, green: 0.514, blue: 0.478).opacity(0.16),
+            navigationDivider: Color(red: 0.318, green: 0.498, blue: 0.459).opacity(0.18),
+            textPrimary: Color(red: 0.145, green: 0.247, blue: 0.227),
+            textSecondary: Color(red: 0.294, green: 0.431, blue: 0.400),
+            textTertiary: Color(red: 0.463, green: 0.600, blue: 0.565),
+            hover: Color(red: 0.180, green: 0.420, blue: 0.365).opacity(0.055),
+            selection: Color(red: 0.172, green: 0.482, blue: 0.411).opacity(0.105),
+            bearAccent: Color(red: 0.957, green: 0.753, blue: 0.435).opacity(0.26),
+            galaxyPrimary: Color(red: 0.310, green: 0.716, blue: 0.667).opacity(0.34),
+            galaxySecondary: Color(red: 0.400, green: 0.682, blue: 0.824).opacity(0.28),
+            galaxyGlow: Color(red: 0.984, green: 0.825, blue: 0.549).opacity(0.38)
         )
     }
 
@@ -203,6 +240,8 @@ public extension WorkspaceThemeMode {
             .softRose
         case .solitudeBlue:
             .solitudeBlue
+        case .breezyDay:
+            .breezyDay
         }
     }
 
@@ -218,6 +257,8 @@ public extension WorkspaceThemeMode {
             .light
         case .solitudeBlue:
             .dark
+        case .breezyDay:
+            .light
         }
     }
 
@@ -313,6 +354,8 @@ public extension ThemeMode {
             .light
         case .solitudeBlue:
             .dark
+        case .breezyDay:
+            .light
         }
     }
 
@@ -328,6 +371,8 @@ public extension ThemeMode {
             NSAppearance(named: .aqua)
         case .solitudeBlue:
             NSAppearance(named: .darkAqua)
+        case .breezyDay:
+            NSAppearance(named: .aqua)
         }
     }
 }
