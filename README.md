@@ -20,3 +20,7 @@ swift run PromptBar
 ```bash
 swift test
 ```
+
+## Web prototype
+
+The PromptBar web prototype is included in `PromptBarWeb/index.html`. Open this file directly in a browser; no build step is required.

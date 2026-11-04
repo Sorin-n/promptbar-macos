@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prompt Atlas</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f9ff;
+      --bg-2: #e9f3ff;
+      --panel: rgba(255, 255, 255, 0.78);
+      --line: rgba(99, 152, 220, 0.16);
+      --text: #223f5e;
+      --text-soft: #7d95af;
+      --accent: #6caeff;
+      --hover: rgba(108, 174, 255, 0.1);
+      --shadow: 0 22px 60px rgba(134, 178, 226, 0.16);
+      --font-ui: "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: var(--font-ui);
+      color: var(--text);
+      background:
+        radial-gradient(circle at 22% 18%, rgba(176, 216, 255, 0.55), transparent 22%),
+        radial-gradient(circle at 82% 24%, rgba(207, 232, 255, 0.42), transparent 24%),
+        linear-gradient(180deg, #fbfdff 0%, var(--bg) 58%, var(--bg-2) 100%);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 50% 14%, rgba(255, 255, 255, 0.92), transparent 32%);
+    }
+
+    .layout {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.52);
+      backdrop-filter: blur(14px);
+      padding: 28px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .brand {
+      display: grid;
+      gap: 6px;
+    }
+
+    .brand-title {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-copy {
+      margin: 0;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      color: var(--text-soft);
+    }
+
+    .site-nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .site-link {
+      border: 1px solid transparent;
+      border-radius: 16px;
+      padding: 14px 14px;
+      text-decoration: none;
+      color: var(--text);
+      background: transparent;
+      transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+      display: grid;
+      gap: 4px;
+    }
+
+    .site-link:hover,
+    .site-link.is-active {
+      background: var(--hover);
+      border-color: rgba(108, 174, 255, 0.22);
+      transform: translateX(2px);
+    }
+
+    .site-link-title {
+      font-size: 0.96rem;
+      font-weight: 600;
+    }
+
+    .site-link-copy {
+      font-size: 0.82rem;
+      line-height: 1.45;
+      color: var(--text-soft);
+    }
+
+    .content {
+      display: grid;
+      place-items: center;
+      padding: 28px;
+    }
+
+    .hero {
+      width: min(900px, 100%);
+      display: grid;
+      gap: 20px;
+      justify-items: center;
+    }
+
+    .hero-copy {
+      display: grid;
+      gap: 8px;
+      justify-items: center;
+      text-align: center;
+    }
+
+    .hero-title {
+      margin: 0;
+      font-size: clamp(2rem, 3.8vw, 3.2rem);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+    }
+
+    .hero-subtitle {
+      margin: 0;
+      max-width: 560px;
+      font-size: 0.96rem;
+      line-height: 1.7;
+      color: var(--text-soft);
+    }
+
+    .search-shell {
+      width: min(760px, 100%);
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+
+    .search-form {
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      height: 72px;
+      padding: 0 84px 0 26px;
+      border: 1px solid rgba(99, 152, 220, 0.12);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.92);
+      color: var(--text);
+      font: inherit;
+      font-size: 1rem;
+      outline: none;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    }
+
+    .search-input::placeholder {
+      color: var(--text-soft);
+    }
+
+    .search-input:focus {
+      border-color: rgba(108, 174, 255, 0.34);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.68),
+        0 0 0 5px rgba(108, 174, 255, 0.08);
+    }
+
+    .search-button {
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      width: 54px;
+      height: 54px;
+      border: 0;
+      border-radius: 999px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #79b9ff, var(--accent));
+      color: white;
+      font-size: 1.2rem;
+      box-shadow: 0 10px 26px rgba(108, 174, 255, 0.24);
+    }
+
+    .helper-copy {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+      color: var(--text-soft);
+      font-size: 0.84rem;
+    }
+
+    .helper-chip {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.56);
+      border: 1px solid rgba(99, 152, 220, 0.12);
+    }
+
+    @media (max-width: 860px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .site-nav {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+
+      .content {
+        padding: 24px 18px 32px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <aside class="sidebar">
+      <header class="brand">
+        <h1 class="brand-title">Prompt Atlas</h1>
+        <p class="brand-copy">只保留提示词集合类网站，帮助你更快跳到对应的成品 prompt 站点。</p>
+      </header>
+
+      <nav class="site-nav" aria-label="提示词集合站点">
+        <a class="site-link is-active" href="https://langgptai.feishu.cn/wiki/Wm4Bw0E7coMZl5kAkMpcUIjvnQf" target="_blank" rel="noopener">
+          <span class="site-link-title">LangGPT</span>
+          <span class="site-link-copy">中文结构化提示词框架，适合快速搭建角色和流程模板。</span>
+        </a>
+        <a class="site-link" href="https://flowgpt.com/" target="_blank" rel="noopener">
+          <span class="site-link-title">FlowGPT</span>
+          <span class="site-link-copy">社区共享型 prompt 集合，适合找热门用法和应用灵感。</span>
+        </a>
+        <a class="site-link" href="https://prompthero.com/" target="_blank" rel="noopener">
+          <span class="site-link-title">PromptHero</span>
+          <span class="site-link-copy">偏图像创作的 prompt 集合与案例站点。</span>
+        </a>
+        <a class="site-link" href="https://snackprompt.com/" target="_blank" rel="noopener">
+          <span class="site-link-title">Snack Prompt</span>
+          <span class="site-link-copy">通用 prompt 集合，更适合快速浏览写作和效率类模板。</span>
+        </a>
+        <a class="site-link" href="https://www.aishort.top/" target="_blank" rel="noopener">
+          <span class="site-link-title">AiShort</span>
+          <span class="site-link-copy">中文提示词导航聚合，适合快速找常用模版。</span>
+        </a>
+        <a class="site-link" href="https://openart.ai/promptbook" target="_blank" rel="noopener">
+          <span class="site-link-title">OpenArt Prompt Book</span>
+          <span class="site-link-copy">图像生成风格词和 prompt book 集合。</span>
+        </a>
+      </nav>
+    </aside>
+
+    <section class="content">
+      <div class="hero">
+        <div class="hero-copy">
+          <h2 class="hero-title">快捷找到对应提示词站点</h2>
+          <p class="hero-subtitle">输入站点名、别名或直接输入网址。命中已内置的提示词集合网站时直接跳转，未命中时自动回退到搜索引擎。</p>
+        </div>
+
+        <div class="search-shell">
+          <form class="search-form" id="search-form">
+            <input
+              class="search-input"
+              id="search-input"
+              type="text"
+              placeholder="搜索提示词站点，或直接输入网址"
+              autocomplete="off"
+            />
+            <button class="search-button" type="submit" aria-label="搜索">⌕</button>
+          </form>
+        </div>
+
+        <div class="helper-copy" aria-hidden="true">
+          <span class="helper-chip">支持输入 LangGPT / FlowGPT / PromptHero</span>
+          <span class="helper-chip">支持直接输入网址</span>
+          <span class="helper-chip">未命中时自动回退搜索</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("search-form");
+    const input = document.getElementById("search-input");
+
+    const quickTargets = [
+      {
+        title: "LangGPT",
+        url: "https://langgptai.feishu.cn/wiki/Wm4Bw0E7coMZl5kAkMpcUIjvnQf",
+        aliases: ["langgpt", "结构化", "中文提示词", "角色模板"]
+      },
+      {
+        title: "FlowGPT",
+        url: "https://flowgpt.com/",
+        aliases: ["flowgpt", "社区", "热门提示词", "共享 prompt"]
+      },
+      {
+        title: "PromptHero",
+        url: "https://prompthero.com/",
+        aliases: ["prompthero", "图像", "midjourney", "图像 prompt"]
+      },
+      {
+        title: "Snack Prompt",
+        url: "https://snackprompt.com/",
+        aliases: ["snack prompt", "写作 prompt", "通用提示词", "文案提示词"]
+      },
+      {
+        title: "AiShort",
+        url: "https://www.aishort.top/",
+        aliases: ["aishort", "中文导航", "中文提示词导航"]
+      },
+      {
+        title: "OpenArt Prompt Book",
+        url: "https://openart.ai/promptbook",
+        aliases: ["openart", "prompt book", "风格词", "图像风格"]
+      }
+    ];
+
+    function normalize(value) {
+      return value.trim().toLowerCase();
+    }
+
+    function resolveTarget(query) {
+      const normalized = normalize(query);
+      if (!normalized) return null;
+
+      if (/^https?:\/\//.test(normalized)) return normalized;
+      if (/^[\w.-]+\.[a-z]{2,}/i.test(normalized)) return `https://${normalized}`;
+
+      const matched = quickTargets.find((item) => {
+        const haystack = [item.title, ...item.aliases].join(" ").toLowerCase();
+        return haystack.includes(normalized);
+      });
+
+      if (matched) return matched.url;
+      return `https://www.google.com/search?q=${encodeURIComponent(query + " 提示词")}`;
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const target = resolveTarget(input.value);
+      if (!target) return;
+      window.open(target, "_blank", "noopener");
+    });
+  </script>
+</body>
+</html>
